@@ -16,7 +16,7 @@ import AdminPanel from '@/components/AdminPanel'
 import type { AppState, ProjectFormData, SelectedDocument } from '@/types'
 
 // Utils
-import { storage } from '@/utils'
+import { storage } from '@/utils/appStateStorage'
 
 const STORAGE_KEY = 'pdf-packet-builder-state'
 

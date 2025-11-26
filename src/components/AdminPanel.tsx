@@ -37,35 +37,35 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Keep local documents loaded when authenticated
+  useEffect(() => {
+    let mounted = true
+
+    const initAuth = async () => {
+      try {
+        const isAuth = await authService.isAuthenticated()
+        if (mounted) setIsAuthenticated(isAuth)
+      } catch (err) {
+        console.error('Auth check error:', err)
+      }
+    }
+
+    initAuth()
+
+    const unsub = authService.onAuthStateChange((isAuth) => {
+      if (mounted) setIsAuthenticated(isAuth)
+    })
+
+    return () => {
+      mounted = false
+      unsub()
+    }
+  }, [])
+
   useEffect(() => {
     if (isAuthenticated) {
       loadDocuments()
     }
   }, [isAuthenticated])
-
-  // Sync auth state with Supabase when component mounts
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      try {
-        const authOk = await authService.syncAuth()
-        if (mounted) setIsAuthenticated(authOk)
-      } catch (err) {
-        console.error('Auth sync error:', err)
-      }
-    })()
-
-    // subscribe to auth changes to update UI
-    const unsub = authService.onAuthStateChange((ok) => {
-      if (mounted) setIsAuthenticated(ok)
-    })
-
-    return () => {
-      mounted = false
-      unsub?.()
-    }
-  }, [])
 
   const loadDocuments = async () => {
     try {
@@ -80,27 +80,20 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     }
   }
 
-  // Replace previous authenticateAdmin flow with Supabase signIn
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       setLoading(true)
       setError(null)
 
-      // Use the email state if provided, otherwise fallback to ADMIN_EMAIL constant
       const loginEmail = email && email.trim() !== '' ? email.trim() : ADMIN_EMAIL
 
-      // Call authService which wraps supabase.auth.signInWithPassword
       const result = await authService.signInAdmin(loginEmail, password)
 
       if (result?.user) {
-        // set local session for UI fallback and compatibility
-        authService.setLocalAdminSession(loginEmail)
-        setIsAuthenticated(true)
         setPassword('')
+        setEmail('')
         setError(null)
-        // load documents after login
-        await loadDocuments()
       } else {
         setError('Authentication failed')
       }
@@ -117,13 +110,12 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     try {
       setLoading(true)
       await authService.signOut()
-    } catch (err) {
-      console.error('Sign out error:', err)
-    } finally {
-      authService.clearLocalAdminSession()
-      setIsAuthenticated(false)
       setPassword('')
       setEmail('')
+    } catch (err) {
+      console.error('Sign out error:', err)
+      setError('Failed to logout')
+    } finally {
       setLoading(false)
     }
   }
