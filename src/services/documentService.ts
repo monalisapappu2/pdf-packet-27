@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient'
+import { storageService, STORES } from './storageService'
 import type { Document, DocumentType, ProductType } from '@/types'
 
 class DocumentService {
@@ -33,25 +33,12 @@ class DocumentService {
 
   async getAllDocuments(): Promise<Document[]> {
     try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      return (data || []).map(doc => ({
-        id: doc.id,
-        name: doc.name,
-        description: doc.description,
-        filename: doc.filename,
-        url: '',
-        size: doc.size,
-        type: doc.type,
-        required: doc.required,
-        products: doc.products,
-        productType: doc.product_type
-      }))
+      const documents = await storageService.getAll<Document>(STORES.DOCUMENTS)
+      return documents.sort((a, b) => {
+        const aTime = (a as any).created_at || 0
+        const bTime = (b as any).created_at || 0
+        return bTime - aTime
+      })
     } catch (error) {
       console.error('Error fetching documents:', error)
       return []
@@ -60,26 +47,8 @@ class DocumentService {
 
   async getDocumentsByProductType(productType: ProductType): Promise<Document[]> {
     try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('product_type', productType)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      return (data || []).map(doc => ({
-        id: doc.id,
-        name: doc.name,
-        description: doc.description,
-        filename: doc.filename,
-        url: '',
-        size: doc.size,
-        type: doc.type,
-        required: doc.required,
-        products: doc.products,
-        productType: doc.product_type
-      }))
+      const allDocs = await this.getAllDocuments()
+      return allDocs.filter(doc => doc.productType === productType)
     } catch (error) {
       console.error('Error fetching documents by product type:', error)
       return []
@@ -88,28 +57,7 @@ class DocumentService {
 
   async getDocument(id: string): Promise<Document | null> {
     try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle()
-
-      if (error) throw error
-
-      if (!data) return null
-
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        filename: data.filename,
-        url: '',
-        size: data.size,
-        type: data.type,
-        required: data.required,
-        products: data.products,
-        productType: data.product_type
-      }
+      return await storageService.get<Document>(STORES.DOCUMENTS, id)
     } catch (error) {
       console.error('Error fetching document:', error)
       return null
@@ -136,38 +84,39 @@ class DocumentService {
       const type = this.detectDocumentType(file.name)
       const name = this.extractDocumentName(file.name, type)
 
-      const { data, error } = await supabase
-        .from('documents')
-        .insert({
-          name,
-          description: `${type} Document`,
-          filename: file.name,
-          file_data: new Uint8Array(fileBuffer),
-          size: file.size,
-          type,
-          required: false,
-          products: [],
-          product_type: productType
-        })
-        .select()
-        .single()
+      const timestamp = new Date().getTime()
+      const document: Document & { file_data: Uint8Array; created_at: number } = {
+        id: this.generateId(),
+        name,
+        description: type + ' Document',
+        filename: file.name,
+        url: '',
+        size: file.size,
+        type,
+        required: false,
+        products: [],
+        productType,
+        file_data: new Uint8Array(fileBuffer),
+        created_at: timestamp
+      }
 
-      if (error) throw error
+      await storageService.set(STORES.DOCUMENTS, document)
 
       if (onProgress) onProgress(100)
 
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        filename: data.filename,
-        url: '',
-        size: data.size,
-        type: data.type,
-        required: data.required,
-        products: data.products,
-        productType: data.product_type
+      const returnDoc: Document = {
+        id: document.id,
+        name: document.name,
+        description: document.description,
+        filename: document.filename,
+        url: document.url,
+        size: document.size,
+        type: document.type,
+        required: document.required,
+        products: document.products,
+        productType: document.productType
       }
+      return returnDoc
     } catch (error) {
       console.error('Error in uploadDocument:', error)
       throw error instanceof Error ? error : new Error('Failed to upload document')
@@ -176,20 +125,13 @@ class DocumentService {
 
   async updateDocument(id: string, updates: Partial<Document>): Promise<void> {
     try {
-      const updateData: Record<string, any> = {}
+      const existing = await this.getDocument(id)
+      if (!existing) {
+        throw new Error('Document not found')
+      }
 
-      if (updates.name) updateData.name = updates.name
-      if (updates.description) updateData.description = updates.description
-      if (updates.type) updateData.type = updates.type
-      if ('required' in updates) updateData.required = updates.required
-      if (updates.products) updateData.products = updates.products
-
-      const { error } = await supabase
-        .from('documents')
-        .update(updateData)
-        .eq('id', id)
-
-      if (error) throw error
+      const updated = { ...existing, ...updates }
+      await storageService.set(STORES.DOCUMENTS, updated)
     } catch (error) {
       console.error('Error updating document:', error)
       throw error instanceof Error ? error : new Error('Failed to update document')
@@ -198,12 +140,7 @@ class DocumentService {
 
   async deleteDocument(id: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('documents')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
+      await storageService.delete(STORES.DOCUMENTS, id)
     } catch (error) {
       console.error('Error deleting document:', error)
       throw error instanceof Error ? error : new Error('Failed to delete document')
@@ -212,16 +149,10 @@ class DocumentService {
 
   async exportDocumentAsBase64(id: string): Promise<string | null> {
     try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('file_data')
-        .eq('id', id)
-        .maybeSingle()
+      const doc = await storageService.get<Document & { file_data: Uint8Array }>(STORES.DOCUMENTS, id)
+      if (!doc?.file_data) return null
 
-      if (error) throw error
-      if (!data?.file_data) return null
-
-      const uint8Array = new Uint8Array(data.file_data)
+      const uint8Array = new Uint8Array(doc.file_data)
       let base64String = ''
       for (let i = 0; i < uint8Array.length; i++) {
         base64String += String.fromCharCode(uint8Array[i])
@@ -282,6 +213,12 @@ class DocumentService {
     }
 
     return typeMap[type] || name
+  }
+
+  private generateId(): string {
+    const timestamp = new Date().getTime()
+    const random = Math.random().toString(36).substr(2, 9)
+    return timestamp + '-' + random
   }
 }
 

@@ -1,29 +1,20 @@
-import { supabase } from './supabaseClient'
 import type { AppState } from '@/types'
+
+const APP_STATE_KEY = 'pdf_packet_builder_app_state'
 
 class AppStateService {
   async loadAppState(): Promise<AppState | null> {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const stored = localStorage.getItem(APP_STATE_KEY)
+      if (!stored) return null
 
-      if (!user) return null
-
-      const { data, error } = await supabase
-        .from('app_state')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (error) throw error
-
-      if (!data) return null
-
+      const parsed = JSON.parse(stored)
       return {
-        currentStep: data.current_step,
-        formData: data.form_data,
-        selectedDocuments: data.selected_documents,
+        currentStep: parsed.currentStep || 1,
+        formData: parsed.formData || {},
+        selectedDocuments: parsed.selectedDocuments || [],
         isGenerating: false,
-        darkMode: data.dark_mode
+        darkMode: parsed.darkMode || false
       }
     } catch (error) {
       console.error('Error loading app state:', error)
@@ -33,45 +24,13 @@ class AppStateService {
 
   async saveAppState(state: AppState): Promise<void> {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-        console.error('No authenticated user')
-        return
+      const toStore = {
+        currentStep: state.currentStep,
+        formData: state.formData,
+        selectedDocuments: state.selectedDocuments,
+        darkMode: state.darkMode
       }
-
-      const { data: existingState } = await supabase
-        .from('app_state')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (existingState) {
-        const { error } = await supabase
-          .from('app_state')
-          .update({
-            current_step: state.currentStep,
-            form_data: state.formData,
-            selected_documents: state.selectedDocuments,
-            dark_mode: state.darkMode,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingState.id)
-
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from('app_state')
-          .insert({
-            user_id: user.id,
-            current_step: state.currentStep,
-            form_data: state.formData,
-            selected_documents: state.selectedDocuments,
-            dark_mode: state.darkMode
-          })
-
-        if (error) throw error
-      }
+      localStorage.setItem(APP_STATE_KEY, JSON.stringify(toStore))
     } catch (error) {
       console.error('Error saving app state:', error)
     }
@@ -79,16 +38,7 @@ class AppStateService {
 
   async clearAppState(): Promise<void> {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) return
-
-      const { error } = await supabase
-        .from('app_state')
-        .delete()
-        .eq('user_id', user.id)
-
-      if (error) throw error
+      localStorage.removeItem(APP_STATE_KEY)
     } catch (error) {
       console.error('Error clearing app state:', error)
     }

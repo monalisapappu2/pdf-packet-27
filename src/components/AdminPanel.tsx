@@ -7,27 +7,16 @@ import {
   Save,
   X,
   FileText,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
   FolderOpen
 } from 'lucide-react'
 import { documentService } from '@/services/documentService'
-import { authService } from '@/services/authService'
 import type { Document, DocumentType, ProductType } from '@/types'
 
 interface AdminPanelProps {
   onClose?: () => void
 }
 
-const ADMIN_EMAIL = 'admin@example.com'
-
 export default function AdminPanel({ onClose }: AdminPanelProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated())
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
@@ -38,34 +27,8 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   const [success, setSuccess] = useState<string | null>(null)
 
   useEffect(() => {
-    let mounted = true
-
-    const initAuth = async () => {
-      try {
-        const isAuth = await authService.isAuthenticated()
-        if (mounted) setIsAuthenticated(isAuth)
-      } catch (err) {
-        console.error('Auth check error:', err)
-      }
-    }
-
-    initAuth()
-
-    const unsub = authService.onAuthStateChange((isAuth) => {
-      if (mounted) setIsAuthenticated(isAuth)
-    })
-
-    return () => {
-      mounted = false
-      unsub()
-    }
+    loadDocuments()
   }, [])
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadDocuments()
-    }
-  }, [isAuthenticated])
 
   const loadDocuments = async () => {
     try {
@@ -75,46 +38,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     } catch (err) {
       setError('Failed to load documents')
       console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      setLoading(true)
-      setError(null)
-
-      const loginEmail = email && email.trim() !== '' ? email.trim() : ADMIN_EMAIL
-
-      const result = await authService.signInAdmin(loginEmail, password)
-
-      if (result?.user) {
-        setPassword('')
-        setEmail('')
-        setError(null)
-      } else {
-        setError('Authentication failed')
-      }
-    } catch (err: any) {
-      console.error('Authentication failed:', err)
-      const msg = err?.message || 'Authentication failed'
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleLogout = async () => {
-    try {
-      setLoading(true)
-      await authService.signOut()
-      setPassword('')
-      setEmail('')
-    } catch (err) {
-      console.error('Sign out error:', err)
-      setError('Failed to logout')
     } finally {
       setLoading(false)
     }
@@ -147,21 +70,20 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
         } catch (fileError) {
           results.failed++
           const errorMsg = fileError instanceof Error ? fileError.message : 'Unknown error'
-          results.errors.push(`${file.name}: ${errorMsg}`)
-          console.error(`Failed to upload ${file.name}:`, fileError)
+          results.errors.push(file.name + ': ' + errorMsg)
+          console.error('Failed to upload ' + file.name + ':', fileError)
         }
       }
 
       if (results.successful > 0) {
         setSuccess(
-          `Successfully uploaded ${results.successful} document(s) to ${
-            selectedCategory === 'structural-floor' ? 'Structural Floor' : 'Underlayment'
-          }`
+          'Successfully uploaded ' + results.successful + ' document(s) to ' +
+            (selectedCategory === 'structural-floor' ? 'Structural Floor' : 'Underlayment')
         )
       }
 
       if (results.failed > 0) {
-        setError(`Failed to upload ${results.failed} file(s):\n${results.errors.join('\n')}`)
+        setError('Failed to upload ' + results.failed + ' file(s):\n' + results.errors.join('\n'))
       }
 
       if (results.successful > 0) {
@@ -243,104 +165,18 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     setEditForm({})
   }
 
-  // Filter documents by category
   const structuralFloorDocs = documents.filter((doc) => doc.productType === 'structural-floor')
   const underlaymentDocs = documents.filter((doc) => doc.productType === 'underlayment')
 
-  // Login Screen
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card dark:glass-card-dark p-8 max-w-md w-full"
-        >
-          <div className="flex items-center justify-center mb-6">
-            <Lock className="w-12 h-12 text-blue-500" />
-          </div>
-          <h1 className="text-2xl font-bold text-center mb-6 text-gray-900 dark:text-white">
-            Admin Access
-          </h1>
-
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleLogin}>
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                Email (optional)
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white mb-3"
-                placeholder={ADMIN_EMAIL}
-              />
-
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
-                  placeholder="Enter admin password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-            >
-              <Unlock className="inline-block w-5 h-5 mr-2" />
-              Login
-            </button>
-          </form>
-
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="w-full mt-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 font-medium py-2"
-            >
-              Back to App
-            </button>
-          )}
-        </motion.div>
-      </div>
-    )
-  }
-
-  // Admin Dashboard
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Document Management</h1>
             <p className="text-gray-600 dark:text-gray-400">Upload and manage PDF documents by category</p>
           </div>
           <div className="flex gap-3">
-            <button onClick={handleLogout} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
-              <Lock className="inline-block w-5 h-5 mr-2" />
-              Logout
-            </button>
             {onClose && (
               <button onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
                 <X className="inline-block w-5 h-5 mr-2" />
@@ -350,7 +186,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
           </div>
         </div>
 
-        {/* Messages */}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -374,11 +209,9 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
           )}
         </AnimatePresence>
 
-        {/* Upload Section */}
         <div className="glass-card dark:glass-card-dark p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Upload Documents</h2>
 
-          {/* Category Selector */}
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Select Category</label>
             <select
@@ -412,15 +245,13 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{uploadProgress}%</span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                <div className="bg-blue-500 h-2 rounded-full transition-all duration-300" style={{ width: uploadProgress + '%' }} />
               </div>
             </div>
           )}
         </div>
 
-        {/* Documents by Category */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Structural Floor Documents */}
           <DocumentCategory
             title="Structural Floor Documents"
             icon="🏗️"
@@ -436,7 +267,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
             onEditFormChange={setEditForm}
           />
 
-          {/* Underlayment Documents */}
           <DocumentCategory
             title="Underlayment Documents"
             icon="📋"
@@ -457,7 +287,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   )
 }
 
-// Document Category Component (unchanged)
 interface DocumentCategoryProps {
   title: string
   icon: string
@@ -532,10 +361,9 @@ function DocumentCategory({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className={`border ${colors.border} rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors`}
+              className={'border ' + colors.border + ' rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors'}
             >
               {editingDoc === doc.id ? (
-                // Edit Mode
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-4">
                     <div>
@@ -586,7 +414,6 @@ function DocumentCategory({
                   </div>
                 </div>
               ) : (
-                // View Mode
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">
                     <FileText className="w-8 h-8 text-blue-500 flex-shrink-0 mt-1" />
@@ -594,7 +421,7 @@ function DocumentCategory({
                       <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{doc.name}</h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{doc.description}</p>
                       <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
-                        <span className={`px-2 py-1 ${colors.bg} ${colors.text} rounded`}>{doc.type}</span>
+                        <span className={'px-2 py-1 ' + colors.bg + ' ' + colors.text + ' rounded'}>{doc.type}</span>
                         <span>{(doc.size / 1024 / 1024).toFixed(2)} MB</span>
                         <span className="truncate max-w-xs">{doc.filename}</span>
                       </div>
