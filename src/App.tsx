@@ -11,12 +11,11 @@ import DocumentOrdering from '@/components/steps/DocumentOrdering'
 import PacketGeneration from '@/components/steps/PacketGeneration'
 import ThemeProvider from '@/components/ThemeProvider'
 import AdminPanel from '@/components/AdminPanel'
+import Login from '@/components/Login'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 // Types
 import type { AppState, ProjectFormData, SelectedDocument } from '@/types'
-
-// Utils
-import { appStateService } from '@/services/appStateService'
 
 function App() {
   const [appState, setAppState] = useState<AppState>({
@@ -26,30 +25,7 @@ function App() {
     isGenerating: false,
     darkMode: false,
   })
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    const loadState = async () => {
-      try {
-        const savedState = await appStateService.loadAppState()
-        if (savedState) {
-          setAppState(savedState)
-        }
-      } catch (error) {
-        console.error('Failed to load app state:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadState()
-  }, [])
-
-  useEffect(() => {
-    if (!isLoading) {
-      appStateService.saveAppState(appState)
-    }
-  }, [appState, isLoading])
+  const [isLoading, setIsLoading] = useState(false)
 
   // Update form data with useCallback to prevent infinite loops
   const updateFormData = useCallback((data: Partial<ProjectFormData>) => {
@@ -124,7 +100,6 @@ function App() {
       isGenerating: false,
       darkMode: appState.darkMode,
     })
-    appStateService.clearAppState()
   }
 
   const stepComponents = {
@@ -138,10 +113,20 @@ function App() {
     <ThemeProvider darkMode={appState.darkMode}>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-300">
         <Routes>
-          {/* Admin Panel Route */}
+          {/* Login Route */}
           <Route
             path="/admin"
-            element={<AdminPanel />}
+            element={<Login />}
+          />
+
+          {/* Admin Panel Route */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute>
+                <AdminPanel />
+              </ProtectedRoute>
+            }
           />
           
           {/* Main App Route */}

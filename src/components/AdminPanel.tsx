@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload,
@@ -7,9 +8,12 @@ import {
   Save,
   X,
   FileText,
-  FolderOpen
+  FolderOpen,
+  LogOut
 } from 'lucide-react'
 import { documentService } from '@/services/documentService'
+import { authService } from '@/services/authService'
+import toast from 'react-hot-toast'
 import type { Document, DocumentType, ProductType } from '@/types'
 
 interface AdminPanelProps {
@@ -17,6 +21,7 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ onClose }: AdminPanelProps) {
+  const navigate = useNavigate()
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number>(0)
@@ -165,6 +170,12 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     setEditForm({})
   }
 
+  const handleLogout = async () => {
+    await authService.logout()
+    toast.success('Logged out successfully')
+    navigate('/admin')
+  }
+
   const structuralFloorDocs = documents.filter((doc) => doc.productType === 'structural-floor')
   const underlaymentDocs = documents.filter((doc) => doc.productType === 'underlayment')
 
@@ -176,14 +187,13 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Document Management</h1>
             <p className="text-gray-600 dark:text-gray-400">Upload and manage PDF documents by category</p>
           </div>
-          <div className="flex gap-3">
-            {onClose && (
-              <button onClick={onClose} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg">
-                <X className="inline-block w-5 h-5 mr-2" />
-                Close
-              </button>
-            )}
-          </div>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+          >
+            <LogOut className="w-5 h-5" />
+            Logout
+          </button>
         </div>
 
         <AnimatePresence>
